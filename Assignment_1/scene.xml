@@ -1,0 +1,76 @@
+<mujoco model="Rube Goldberg Machine">
+  <worldbody>
+
+    <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
+    <geom type="plane" size="0 0 0.1" rgba="1 1 1 1"  solref="0.01 0.2"    />
+
+    <body pos="3 0 13" euler="0 30 0">
+      <geom type="box" size=".1 .3 1" rgba="0 .8 .5 1"   solref="0.01 0.2"       />
+    </body>
+
+
+    <body pos="-2 0 8" euler="0 90 0">
+      <geom type="box" size=".1 .3 1" rgba="0 .8 .5 1" solref="0.01 0.2"   />
+    </body>
+
+      <body pos="-3 0 10" euler="0 0 0">
+      <geom type="box" size=".1 .3 1" rgba="0 .8 .5 1" solref="0.01 0.2"   />
+    </body>
+
+    <body pos = "3 0 18" >
+          <joint type ="free" />
+        <geom type = "sphere" size = ".3"   rgba="2 .3 5 2"  solref="0.01 0.2"/>
+    </body>
+
+
+    <body pos="2.6 0 5.5" euler="0 90 0">
+      <geom type="box" size=".1 .3 .9" rgba="0 .8 .5 1" solref="0.1 0.5"   />
+    </body>
+
+    <body pos="1.8 0 6.7" euler="0 0 0">
+          <joint type ="free" />
+        <geom type="box" size=".06 .3 1" rgba=".8 .5 0 1" solref="0.1 0.5" />
+        <inertial pos="0 0 0"  mass="500"  diaginertia="3 3 3"/>
+    </body>
+
+    <body pos="2.2 0 6.7" euler="0 0 0">
+          <joint type ="free" />
+        <geom type="box" size=".06 .3 1" rgba=".8 .5 0 1" solref="0.1 0.5" />
+        <inertial pos="0 0 0"  mass="700"  diaginertia="3 3 3"/>
+    </body>
+
+    <body pos="2.6 0 6.7" euler="0 0 0">
+          <joint type ="free" />
+        <geom type="box" size=".06 .3 1" rgba=".8 .5 0 1" solref="0.1 0.5" />
+        <inertial pos="0 0 0"  mass="700"  diaginertia="3 3 3"/>
+    </body>
+
+
+    <body pos="3 0 6.7" euler="0 0 0">
+          <joint type ="free" />
+        <geom type="box" size=".06 .3 1" rgba=".8 .5 0 1"solref="0.1 0.5" />
+        <inertial pos="0 0 0"  mass="700"  diaginertia="3 3 3"/>
+    </body>
+
+    <body pos="3.4 0 6.7" euler="0 0 0">
+          <joint type ="free" />
+        <geom type="box" size=".06 .3 1" rgba=".8 .5 0 1" solref="0.1 0.5" />
+        <inertial pos="0 0 0"  mass="700"  diaginertia="3 3 3"/>
+    </body>
+
+
+    <body pos="2.6 0 2" euler="0 90 0">
+      <geom type="box" size=".1 .3 1" rgba="0 .8 .5 1" solref="0.01 0.01"   />
+    </body>
+
+      <body pos="0.5 0 4" euler="0 -20 0">
+      <geom type="box" size=".1 .3 1" rgba="0 .8 .5 1" solref="0.01 0.1"   />
+    </body>
+
+      <body pos="6 0 6" euler="0 -10 0">
+      <geom type="box" size=".1 .3 1" rgba="0 .8 .5 1" solref="0.01 0.1"   />
+    </body>
+
+
+  </worldbody>
+</mujoco>
