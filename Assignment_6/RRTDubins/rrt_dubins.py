@@ -118,7 +118,7 @@ class RRTDubins(RRT):
 
         plt.plot(self.start.x, self.start.y, "xr")
         plt.plot(self.end.x, self.end.y, "xr")
-        plt.axis([-35, 35, -5, 30])
+        plt.axis([-2, 15, -2, 15])
         plt.grid(True)
         self.plot_start_goal_arrow()
         plt.pause(0.01)
@@ -207,63 +207,22 @@ class RRTDubins(RRT):
 
 def main():
 
-    print("start " + __file__)
-
+    print("Start " + __file__)
     # ====Search Path with RRT====
-    obstacleList = []  # [x, y, radius]
-    
-    ox = []
-    oy = []
-    w=5
-    
-    for i in range(5):
-        ox.append(0)
-        oy.append(-w/2+float(i))
-    for i in range(60):
-        ox.append(-30.0+float(i))
-        oy.append(-w/2)
-    for i in range(50):
-        ox.append(-25.0+float(i))
-        oy.append(w/2)
-    for i in range(30):
-        ox.append(30)
-        oy.append(-w/2+float(i))
-    for i in range(20):
-        ox.append(25)
-        oy.append(w/2+float(i))
-    for i in range(33):
-        ox.append(-w/2+float(i))
-        oy.append(27.5)
-    for i in range(23):
-        ox.append(w/2+float(i))
-        oy.append(22.5)        
-    for i in range(15):
-        ox.append(-30)
-        oy.append(-w/2+float(i))
-    for i in range(28):
-        ox.append(-30+float(i))
-        oy.append(13)
-    for i in range(15):
-        ox.append(-w/2)
-        oy.append(13+float(i))
-    for i in range(5):
-        ox.append(-25)
-        oy.append(w/2+float(i))
-    for i in range(28):
-        ox.append(-25+float(i))
-        oy.append(7.5)
-    for i in range(15):
-        ox.append(w/2)
-        oy.append(7.5+float(i))
-
-    for i in range(len(ox)): obstacleList.append(( ox[i], oy[i] , 0.5))
-
+    obstacleList = [
+        (5, 5, 1),
+        (3, 6, 2),
+        (3, 8, 2),
+        (3, 10, 2),
+        (7, 5, 2),
+        (9, 5, 2)
+    ]  # [x,y,size(radius)]
 
     # Set Initial parameters
-    start = [6.0, 0.0, np.deg2rad(0.0)]
-    goal = [-6.0, 0.0, np.deg2rad(0.0)]
+    start = [0.0, 0.0, np.deg2rad(0.0)]
+    goal = [10.0, 10.0, np.deg2rad(0.0)]
 
-    rrt_dubins = RRTDubins(start, goal, obstacleList, [-15.0, 15.0])
+    rrt_dubins = RRTDubins(start, goal, obstacleList, [-2.0, 15.0])
     path = rrt_dubins.planning(animation=show_animation)
 
     # Draw final path

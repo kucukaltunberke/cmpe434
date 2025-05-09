@@ -248,66 +248,28 @@ class RRTStar(RRT):
 
 
 def main():
-    print("start " + __file__)
+    print("Start " + __file__)
 
     # ====Search Path with RRT====
-    obstaclelist = []  # [x, y, radius]
-    
-    ox = []
-    oy = []
-    w=5
-    offset_y_value=-15
-
-    for i in range(5):
-        ox.append(0)
-        oy.append(-w/2+float(i)+offset_y_value)
-    for i in range(60):
-        ox.append(-30.0+float(i))
-        oy.append(-w/2+offset_y_value)
-    for i in range(50):
-        ox.append(-25.0+float(i))
-        oy.append(w/2+offset_y_value)
-    for i in range(30):
-        ox.append(30)
-        oy.append(-w/2+float(i)+offset_y_value)
-    for i in range(20):
-        ox.append(25)
-        oy.append(w/2+float(i)+offset_y_value)
-    for i in range(33):
-        ox.append(-w/2+float(i))
-        oy.append(27.5+offset_y_value)
-    for i in range(23):
-        ox.append(w/2+float(i))
-        oy.append(22.5+offset_y_value)        
-    for i in range(15):
-        ox.append(-30)
-        oy.append(-w/2+float(i)+offset_y_value)
-    for i in range(28):
-        ox.append(-30+float(i))
-        oy.append(13+offset_y_value)
-    for i in range(15):
-        ox.append(-w/2)
-        oy.append(13+float(i)+offset_y_value)
-    for i in range(5):
-        ox.append(-25)
-        oy.append(w/2+float(i)+offset_y_value)
-    for i in range(28):
-        ox.append(-25+float(i))
-        oy.append(7.5+offset_y_value)
-    for i in range(15):
-        ox.append(w/2)
-        oy.append(7.5+float(i)+offset_y_value)
-
-    for i in range(len(ox)): obstaclelist.append(( ox[i], oy[i] , 0.4))
+    obstacle_list = [
+        (5, 5, 1),
+        (3, 6, 2),
+        (3, 8, 2),
+        (3, 10, 2),
+        (7, 5, 2),
+        (9, 5, 2),
+        (8, 10, 1),
+        (6, 12, 1),
+    ]  # [x,y,size(radius)]
 
     # Set Initial parameters
     rrt_star = RRTStar(
-        start=[2, 0+offset_y_value],
-        goal=[-2, 0+offset_y_value],
-        rand_area=[-23, 23],
-        obstacle_list=obstaclelist,
-        expand_dis=3,
-        robot_radius=0.4)
+        start=[0, 0],
+        goal=[6, 10],
+        rand_area=[-2, 15],
+        obstacle_list=obstacle_list,
+        expand_dis=1,
+        robot_radius=0.8)
     path = rrt_star.planning(animation=show_animation)
 
     if path is None:

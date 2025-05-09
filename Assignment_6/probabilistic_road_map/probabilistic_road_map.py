@@ -263,55 +263,33 @@ def main(rng=None):
     print(__file__ + " start!!")
 
     # start and goal position
-    sx = 1.0  # [m]
-    sy = 0.0  # [m]
-    gx = -1.0  # [m]
-    gy = 0.0  # [m]
-    robot_size = 1.0  # [m]
-    w= 5.0 #width
+    sx = 10.0  # [m]
+    sy = 10.0  # [m]
+    gx = 50.0  # [m]
+    gy = 50.0  # [m]
+    robot_size = 5.0  # [m]
+
     ox = []
     oy = []
 
-    for i in range(5):
-        ox.append(0)
-        oy.append(-w/2+float(i))
     for i in range(60):
-        ox.append(-30.0+float(i))
-        oy.append(-w/2)
-    for i in range(50):
-        ox.append(-25.0+float(i))
-        oy.append(w/2)
-    for i in range(30):
-        ox.append(30)
-        oy.append(-w/2+float(i))
-    for i in range(20):
-        ox.append(25)
-        oy.append(w/2+float(i))
-    for i in range(33):
-        ox.append(-w/2+float(i))
-        oy.append(27.5)
-    for i in range(23):
-        ox.append(w/2+float(i))
-        oy.append(22.5)        
-    for i in range(15):
-        ox.append(-30)
-        oy.append(-w/2+float(i))
-    for i in range(28):
-        ox.append(-30+float(i))
-        oy.append(13)
-    for i in range(15):
-        ox.append(-w/2)
-        oy.append(13+float(i))
-    for i in range(5):
-        ox.append(-25)
-        oy.append(w/2+float(i))
-    for i in range(28):
-        ox.append(-25+float(i))
-        oy.append(7.5)
-    for i in range(15):
-        ox.append(w/2)
-        oy.append(7.5+float(i))
-
+        ox.append(float(i))
+        oy.append(0.0)
+    for i in range(60):
+        ox.append(60.0)
+        oy.append(float(i))
+    for i in range(61):
+        ox.append(float(i))
+        oy.append(60.0)
+    for i in range(61):
+        ox.append(0.0)
+        oy.append(float(i))
+    for i in range(40):
+        ox.append(20.0)
+        oy.append(float(i))
+    for i in range(40):
+        ox.append(40.0)
+        oy.append(60.0 - i)
 
     if show_animation:
         plt.plot(ox, oy, ".k")

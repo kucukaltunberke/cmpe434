@@ -90,8 +90,6 @@ def main():
                     else:
                         target_pos=pure_pursuit_controller.find_target_point(intersections,point_ahead,point_behind)
                     
-                    print(target_pos, current_pos)
-
 
                     delta_x=target_pos[0]-current_pos[0]
                     delta_y=target_pos[1]-current_pos[1]
