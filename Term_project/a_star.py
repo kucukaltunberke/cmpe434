@@ -233,56 +233,34 @@ class AStarPlanner:
 def main():
     print(__file__ + " start!!")
 
-
     # start and goal position
-    sx = 1.0  # [m]
-    sy = 0.0  # [m]
-    gx = -1.0  # [m]
-    gy = 0.0  # [m]
+    sx = 10.0  # [m]
+    sy = 10.0  # [m]
+    gx = 50.0  # [m]
+    gy = 50.0  # [m]
+    grid_size = 2.0  # [m]
     robot_radius = 1.0  # [m]
-    w= 5.0 #width
-    ox = []
-    oy = []
 
-    for i in range(5):
-        ox.append(0)
-        oy.append(-w/2+float(i))
-    for i in range(60):
-        ox.append(-30.0+float(i))
-        oy.append(-w/2)
-    for i in range(50):
-        ox.append(-25.0+float(i))
-        oy.append(w/2)
-    for i in range(30):
-        ox.append(30)
-        oy.append(-w/2+float(i))
-    for i in range(20):
-        ox.append(25)
-        oy.append(w/2+float(i))
-    for i in range(33):
-        ox.append(-w/2+float(i))
-        oy.append(27.5)
-    for i in range(23):
-        ox.append(w/2+float(i))
-        oy.append(22.5)        
-    for i in range(15):
-        ox.append(-30)
-        oy.append(-w/2+float(i))
-    for i in range(28):
-        ox.append(-30+float(i))
-        oy.append(13)
-    for i in range(15):
-        ox.append(-w/2)
-        oy.append(13+float(i))
-    for i in range(5):
-        ox.append(-25)
-        oy.append(w/2+float(i))
-    for i in range(28):
-        ox.append(-25+float(i))
-        oy.append(7.5)
-    for i in range(15):
-        ox.append(w/2)
-        oy.append(7.5+float(i))
+    # set obstacle positions
+    ox, oy = [], []
+    for i in range(-10, 60):
+        ox.append(i)
+        oy.append(-10.0)
+    for i in range(-10, 60):
+        ox.append(60.0)
+        oy.append(i)
+    for i in range(-10, 61):
+        ox.append(i)
+        oy.append(60.0)
+    for i in range(-10, 61):
+        ox.append(-10.0)
+        oy.append(i)
+    for i in range(-10, 40):
+        ox.append(20.0)
+        oy.append(i)
+    for i in range(0, 40):
+        ox.append(40.0)
+        oy.append(60.0 - i)
 
     if show_animation:  # pragma: no cover
         plt.plot(ox, oy, ".k")
@@ -290,8 +268,6 @@ def main():
         plt.plot(gx, gy, "xb")
         plt.grid(True)
         plt.axis("equal")
-
-    grid_size=0.7
 
     a_star = AStarPlanner(ox, oy, grid_size, robot_radius)
     rx, ry = a_star.planning(sx, sy, gx, gy)

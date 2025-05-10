@@ -6,6 +6,9 @@ import numpy as np
 import scipy as sp
 
 import cmpe434_dungeon as dungeon
+import matplotlib.pyplot as plt
+from a_star import AStarPlanner
+from dynamic_window_approach import dwa_control, Config as DWAConfig
 
 # Helper construsts for the viewer for pause/unpause functionality.
 paused = False
@@ -15,6 +18,46 @@ def mujoco_viewer_callback(keycode):
     global paused
     if keycode == ord(' '):  # Use ord(' ') for space key comparison
         paused = not paused
+
+def get_state(d):
+    x, y = d.qpos[0], d.qpos[1]
+    w, xq, yq, zq = d.qpos[3:7]
+    yaw = np.arctan2(2*(w*zq + xq*yq), 1 - 2*(yq*yq + zq*zq))
+    
+    # Get velocity in robot frame
+    vx, vy, vz = d.qvel[0], d.qvel[1], d.qvel[2]
+    v = vx*np.cos(yaw) + vy*np.sin(yaw)  # Forward speed
+    
+    # Angular velocity (yaw rate)
+    omega = d.qvel[5]  # Assuming rotational velocity is in qvel[5]
+    
+    return np.array([x, y, yaw, v, omega])
+
+
+def A_Star_path_finder(obstacleList,start_pos,final_pos,grid_resolution=0.5,robot_radius=0.8):
+    ox , oy = zip(*obstacleList)
+    sx , sy = start_pos[0] , start_pos[1]
+    gx , gy = final_pos[0] , final_pos[1]
+
+    #Uncomment to see the walls on plot
+    plt.plot(ox, oy, ".k")
+    plt.plot(sx, sy, "og")
+    plt.plot(gx, gy, "xb")
+    plt.grid(True)
+    plt.axis("equal")
+
+    a_star = AStarPlanner(ox, oy, grid_resolution, robot_radius)
+    rx, ry = a_star.planning(sx, sy, gx, gy)
+
+    rx.reverse()
+    ry.reverse()
+
+    #Uncomment to see the A* algorithm on plot
+    plt.plot(rx, ry, "-r")
+    plt.pause(0.001)
+    plt.show()    
+
+    return rx , ry
 
 def main():
 
@@ -29,9 +72,14 @@ def main():
         (xmin, ymin, xmax, ymax) = dungeon.find_room_corners(r)
         scene_spec.worldbody.add_geom(name='R{}'.format(index), type=mujoco.mjtGeom.mjGEOM_PLANE, size=[(xmax-xmin)+1, (ymax-ymin)+1, 0.1], rgba=[0.8, 0.6, 0.4, 1],  pos=[(xmin+xmax), (ymin+ymax), 0])
 
+    obstacleList=[]
+
     for pos, tile in tiles.items():
         if tile == "#":
             scene_spec.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[1, 1, 0.1], rgba=[0.8, 0.6, 0.4, 1],  pos=[pos[0]*2, pos[1]*2, 0])
+            
+            #To plot the map the wall coordinates are listed.
+            obstacleList.append(( pos[0], pos[1]))
 
     start_pos = random.choice([key for key in tiles.keys() if tiles[key] == "."])
     final_pos = random.choice([key for key in tiles.keys() if tiles[key] == "." and key != start_pos])
@@ -87,14 +135,61 @@ def main():
       velocity = d.actuator("robot-throttle_velocity")
       steering = d.actuator("robot-steering")
 
+      rx , ry = A_Star_path_finder(obstacleList,start_pos,final_pos)
+      target_x_list = [2 * x for x in rx]
+      target_y_list = [2 * y for y in ry]
+      max_path_id = len(target_x_list)
+      path_id=0
       # Close the viewer automatically after 30 wall-clock-seconds.
       start = time.time()
+              # prepare DWA configuration using default constructor and override defaults
+      dwa_config = DWAConfig()
+    # tune parameters to match your MuJoCo model
+      dwa_config.max_speed = 6
+      dwa_config.min_speed = -1.0
+      dwa_config.max_yaw_rate = 60 * np.pi / 180
+      dwa_config.max_accel = 1
+      dwa_config.max_delta_yaw_rate = np.pi / 2
+      dwa_config.v_resolution = 0.1
+      dwa_config.yaw_rate_resolution = np.pi / 180
+      dwa_config.dt = 0.3
+      dwa_config.predict_time = 0.1
+      dwa_config.to_goal_cost_gain = 1.0
+      dwa_config.speed_cost_gain = 1.0
+      dwa_config.obstacle_cost_gain = 1.0
+      dwa_config.robot_radius = 1.5
+
+
       while viewer.is_running() and time.time() - start < 3000:
         step_start = time.time()
 
         if not paused:
-            velocity.ctrl = 0.0 # update velocity control value
-            steering.ctrl = 0.0 # update steering control value
+            # initial state [x(m), y(m), yaw(rad), v(m/s), omega(rad/s)]
+            state=get_state(d)
+            wall_xy = np.array([[x * 2, y * 2] for (x, y) in obstacleList])
+            dyn_xy  = np.array([[m.geom_pos[g][0], m.geom_pos[g][1]] for g in obstacles])
+            ob_xy = np.vstack([wall_xy, dyn_xy])
+
+            path_id_selected = min(path_id + 2, max_path_id)
+
+            target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
+
+            u, _traj = dwa_control(state, dwa_config,target_selected , ob_xy)
+            v_cmd, omega_cmd = u
+
+
+
+            print(v_cmd,omega_cmd)
+            # MuJoCo’s internal servo P‑controllers handle the low‑level tracking
+            velocity.ctrl = v_cmd
+            steering.ctrl = omega_cmd
+
+            if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < 0.4:
+                if path_id < len(target_x_list) - 1:
+                    path_id += 1
+
+
+
 
             # Update obstables (bouncing movement)
             for i, x in enumerate(obstacles):
