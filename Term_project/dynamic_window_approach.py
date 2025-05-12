@@ -38,18 +38,18 @@ class Config:
 
     def __init__(self):
         # robot parameter
-        self.max_speed = 1.0  # [m/s]
-        self.min_speed = -0.5  # [m/s]
-        self.max_yaw_rate = 40.0 * math.pi / 180.0  # [rad/s]
-        self.max_accel = 0.2  # [m/ss]
-        self.max_delta_yaw_rate = 40.0 * math.pi / 180.0  # [rad/ss]
-        self.v_resolution = 0.01  # [m/s]
-        self.yaw_rate_resolution = 0.1 * math.pi / 180.0  # [rad/s]
+        self.max_speed = 1.5  # [m/s]
+        self.min_speed = -0.4 # [m/s]
+        self.max_yaw_rate = 6 * math.pi # [rad/s]
+        self.max_accel = 2  # [m/ss]
+        self.max_delta_yaw_rate = math.pi   # [rad/ss]
+        self.v_resolution = 0.1  # [m/s]
+        self.yaw_rate_resolution = math.pi / 90  # [rad/s]
         self.dt = 0.1  # [s] Time tick for motion prediction
-        self.predict_time = 3.0  # [s]
-        self.to_goal_cost_gain = 0.15
-        self.speed_cost_gain = 1.0
-        self.obstacle_cost_gain = 1.0
+        self.predict_time = 2  # [s]
+        self.to_goal_cost_gain = 0.2
+        self.speed_cost_gain = .75
+        self.obstacle_cost_gain = 2
         self.robot_stuck_flag_cons = 0.001  # constant to prevent robot stucked
         self.robot_type = RobotType.circle
 
@@ -260,7 +260,7 @@ def plot_robot(x, y, yaw, config):  # pragma: no cover
         plt.plot([x, out_x], [y, out_y], "-k")
 
 
-def main(gx=10.0, gy=10.0, robot_type=RobotType.circle):
+def main(gx=-3.0, gy=-3.0, robot_type=RobotType.circle):
     print(__file__ + " start!!")
     # initial state [x(m), y(m), yaw(rad), v(m/s), omega(rad/s)]
     x = np.array([0.0, 0.0, math.pi / 8.0, 0.0, 0.0])

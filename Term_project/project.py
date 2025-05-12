@@ -76,13 +76,13 @@ def main():
 
     obstacleList=[]
 
-    def densify(obstacleList, spacing=0.5):
+    def densify(obstacleList, spacing=0.05):
         dense = []
         for (x,y) in obstacleList:
             # look at your 4‐neighborhood walls and interpolate…
             # simplest: jitter a bit of points inside the square
-            for dx in np.arange(-0.5, 0.5, spacing):
-                for dy in np.arange(-0.5, 0.5, spacing):
+            for dx in np.arange(-0.55, 0.55, spacing):
+                for dy in np.arange(-0.55, 0.55, spacing):
                     dense.append((x+dx, y+dy))
         return dense
 
@@ -169,20 +169,21 @@ def main():
               # prepare DWA configuration using default constructor and override defaults
       dwa_config = DWAConfig()
     # tune parameters to match your MuJoCo model
-      dwa_config.max_speed = 1.5
+      dwa_config.max_speed = 1.2
       dwa_config.min_speed = -0.4
-      dwa_config.max_yaw_rate = 3 * np.pi 
+      dwa_config.max_yaw_rate = 360 * np.pi / 190
       dwa_config.max_accel = 2
       dwa_config.max_delta_yaw_rate = 6 * np.pi 
       dwa_config.v_resolution = 0.1
-      dwa_config.yaw_rate_resolution =   np.pi / 90
+      dwa_config.yaw_rate_resolution = 6 * np.pi / 90
       dwa_config.dt = 0.1
-      dwa_config.predict_time = 1
-      dwa_config.to_goal_cost_gain = 2
-      dwa_config.speed_cost_gain = .75
-      dwa_config.obstacle_cost_gain = 3
+      dwa_config.predict_time = 1.0
+      dwa_config.to_goal_cost_gain = 2.0
+      dwa_config.speed_cost_gain = .5
+      dwa_config.obstacle_cost_gain = 1.0
       dwa_config.robot_radius = 0.1
       dwa_config.robot_stuck_flag_cons = 0  # constant to prevent robot stucked
+      dwa_config.stuckstep =0
       dwa_config.robot_type = RobotType.circle
 
                   
