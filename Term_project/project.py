@@ -36,7 +36,7 @@ def get_state(d):
     return np.array([x, y, yaw, v, omega])
 
 
-def A_Star_path_finder(obstacleList,start_pos,final_pos,grid_resolution=0.5,robot_radius=0.5):
+def A_Star_path_finder(obstacleList,start_pos,final_pos,grid_resolution=0.5,robot_radius=0.3):
     ox , oy = zip(*obstacleList)
     sx , sy = start_pos[0] , start_pos[1]
     gx , gy = final_pos[0] , final_pos[1]
@@ -81,8 +81,8 @@ def main():
         for (x,y) in obstacleList:
             # look at your 4‐neighborhood walls and interpolate…
             # simplest: jitter a bit of points inside the square
-            for dx in np.arange(-0.35, 0.35, spacing):
-                for dy in np.arange(-0.35, 0.35, spacing):
+            for dx in np.arange(-0.5, 0.5, spacing):
+                for dy in np.arange(-0.5, 0.5, spacing):
                     dense.append((x+dx, y+dy))
         return dense
 
@@ -171,22 +171,21 @@ def main():
     # tune parameters to match your MuJoCo model
       dwa_config.max_speed = 1.5
       dwa_config.min_speed = -0.4
-      dwa_config.max_yaw_rate = 240 * np.pi / 190
+      dwa_config.max_yaw_rate = 3 * np.pi 
       dwa_config.max_accel = 2
-      dwa_config.max_delta_yaw_rate = 27 * np.pi 
+      dwa_config.max_delta_yaw_rate = 6 * np.pi 
       dwa_config.v_resolution = 0.1
-      dwa_config.yaw_rate_resolution = 18 * np.pi / 90
+      dwa_config.yaw_rate_resolution =   np.pi / 90
       dwa_config.dt = 0.1
-      dwa_config.predict_time = 3
-      dwa_config.to_goal_cost_gain = 4
-      dwa_config.speed_cost_gain = 2.5
-      dwa_config.obstacle_cost_gain = 4
-      dwa_config.robot_radius = 0.3
-      dwa_config.robot_stuck_flag_cons = 0.05  # constant to prevent robot stucked
-      dwa_config.stuckstep =150
+      dwa_config.predict_time = 1
+      dwa_config.to_goal_cost_gain = 2
+      dwa_config.speed_cost_gain = .75
+      dwa_config.obstacle_cost_gain = 3
+      dwa_config.robot_radius = 0.1
+      dwa_config.robot_stuck_flag_cons = 0  # constant to prevent robot stucked
       dwa_config.robot_type = RobotType.circle
 
-      stuck_count=0            
+                  
       d.qvel[0] = .4 * np.cos(yaw)
       d.qvel[1] = .4 * np.sin(yaw)
 
@@ -203,7 +202,7 @@ def main():
             dyn_xy  = np.array([[m.geom_pos[g][0], m.geom_pos[g][1]] for g in obstacles])
             ob_xy = np.vstack([wall_xy, dyn_xy])
 
-            path_id_selected = min(path_id + 1, max_path_id)
+            path_id_selected = min(path_id , max_path_id)
 
             target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
 
@@ -212,19 +211,19 @@ def main():
             dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
             ob_in_range = ob_xy[dists <= 6]
 
-            u, _traj ,stuck_count= dwa_control(state, dwa_config,target_selected , ob_in_range, stuck_count)
+            u, _traj = dwa_control(state, dwa_config,target_selected , ob_in_range)
             v_cmd, omega_cmd = u
 
             # current_yaw = state[4]
             # steering_correction=pid_controller.update(omega_cmd,current_yaw)
 
-            print(stuck_count)
+            
             print(v_cmd,omega_cmd)
             # MuJoCo’s internal servo P‑controllers handle the low‑level tracking
             velocity.ctrl = v_cmd
             steering.ctrl = np.clip(omega_cmd,-4,4)
 
-            if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < 4:
+            if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < 2:
                 if path_id < len(target_x_list) - 1:
                     path_id += 1
                 elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .3:

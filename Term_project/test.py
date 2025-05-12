@@ -33,6 +33,17 @@ def mujoco_viewer_callback(keycode):
     if keycode == ord(' '):  # Use ord(' ') for space key comparison
         paused = not paused
 
+def densify(obstacleList, spacing=0.5):
+    dense = []
+    for (x,y) in obstacleList:
+            # look at your 4‐neighborhood walls and interpolate…
+            # simplest: jitter a bit of points inside the square
+        for dx in np.arange(-0.2, 0.2, spacing):
+            for dy in np.arange(-0.2, 0.2, spacing):
+                dense.append((x+dx, y+dy))
+    return dense
+
+
 def get_state(d):
     x, y = d.qpos[0], d.qpos[1]
     w, xq, yq, zq = d.qpos[3:7]
@@ -47,17 +58,19 @@ def get_state(d):
     
     return np.array([x, y, yaw, v, omega])
 
-def dwa_control(x, config, goal, ob):
+
+def dwa_control(x, config, goal, ob, stuck_count):
     """
     Dynamic Window Approach control
     """
     dw = calc_dynamic_window(x, config)
 
-    u, trajectory = calc_control_and_trajectory(x, dw, config, goal, ob)
+    u, trajectory ,stuck_count= calc_control_and_trajectory(x, dw, config, goal, ob, stuck_count)
 
-    return u, trajectory
+    return u, trajectory,stuck_count
 
-def A_Star_path_finder(obstacleList,start_pos,final_pos,grid_resolution=0.5,robot_radius=0.8):
+
+def A_Star_path_finder(obstacleList,start_pos,final_pos,grid_resolution=0.5,robot_radius=0.5):
     ox , oy = zip(*obstacleList)
     sx , sy = start_pos[0] , start_pos[1]
     gx , gy = final_pos[0] , final_pos[1]
@@ -186,42 +199,76 @@ def predict_trajectory(x_init, v, y, config):
 
     return trajectory
 
-
-def calc_control_and_trajectory(x, dw, config, goal, ob):
+def calc_control_and_trajectory(x, dw, config, goal, ob, stuck_count):
     """
-    calculation final input with dynamic window
+    Calculate the best [v, omega] using Dynamic Window Approach,
+    then, if the robot is stuck, blend that v toward a fixed backward speed.
+    Returns: best_u = [v_cmd, omega_cmd], best_trajectory, updated stuck_count
     """
+    # 1) Unpack state
+    curr_x, curr_y, curr_yaw, curr_v, curr_omega = x
 
-    x_init = x[:]
-    min_cost = float("inf")
-    best_u = [0.0, 0.0]
-    best_trajectory = np.array([x])
+    # 2) Helper to wrap into (-π, π]
+    def normalize(a):
+        return (a + np.pi) % (2*np.pi) - np.pi
 
-    # evaluate all trajectory with sampled input in dynamic window
+    # 3) Compute signed heading error
+    bearing_to_goal = np.arctan2(goal[1] - curr_y,
+                                 goal[0] - curr_x)
+    angle_diff =- normalize(bearing_to_goal - curr_yaw)
+
+    # 4) NORMAL DWA SEARCH
+    min_cost     = float("inf")
+    best_v       = 0.0
+    best_omega   = 0.0
+    best_traj    = np.array([x])
+
     for v in np.arange(dw[0], dw[1], config.v_resolution):
-        for y in np.arange(dw[2], dw[3], config.yaw_rate_resolution):
+        for omega in np.arange(dw[2], dw[3], config.yaw_rate_resolution):
+            traj = predict_trajectory(x, v, omega, config)
 
-            trajectory = predict_trajectory(x_init, v, y, config)
-            # calc cost
-            to_goal_cost = config.to_goal_cost_gain * calc_to_goal_cost(trajectory, goal)
-            speed_cost = config.speed_cost_gain * (config.max_speed - trajectory[-1, 3])
-            ob_cost = config.obstacle_cost_gain * calc_obstacle_cost(trajectory, ob, config)
+            c_goal  = config.to_goal_cost_gain   * calc_to_goal_cost(traj, goal)
+            c_speed = config.speed_cost_gain     * (config.max_speed - traj[-1,3])
+            c_obs   = config.obstacle_cost_gain  * calc_obstacle_cost(traj, ob, config)
 
-            final_cost = to_goal_cost + speed_cost + ob_cost
+            cost = c_goal + c_speed + c_obs
 
-            # search minimum trajectory
-            if min_cost >= final_cost:
-                min_cost = final_cost
-                best_u = [v, y]
-                best_trajectory = trajectory
-                if abs(best_u[0]) < config.robot_stuck_flag_cons \
-                        and abs(x[3]) < config.robot_stuck_flag_cons:
-                    # to ensure the robot do not get stuck in
-                    # best v=0 m/s (in front of an obstacle) and
-                    # best omega=0 rad/s (heading to the goal with
-                    # angle difference of 0)
-                    best_u[1] = -config.max_delta_yaw_rate
-    return best_u, best_trajectory
+            if cost < min_cost:
+                min_cost   = cost
+                best_v     = v
+                best_omega = omega
+                best_traj  = traj
+
+    # 5) Detect entering "stuck" mode
+    if stuck_count == 0 and \
+       abs(best_v) < config.robot_stuck_flag_cons and \
+       abs(curr_v) < config.robot_stuck_flag_cons:
+        stuck_count = 1
+
+    # 6) Compute blend factor β ∈ [0,1]
+    if stuck_count > 0:
+        beta = min(stuck_count / config.stuckstep, 1.0)
+    else:
+        beta = 0.0
+
+    # 7) Mix forward (best_v) with backward (-0.2)
+    backward_speed = -0.3
+    v_cmd = (1 - beta) * best_v + beta * backward_speed
+
+    # 8) Mix heading: DWA’s omega vs. a fixed break-out turn
+    breakout_omega = np.sign(angle_diff) * 3
+    omega_cmd     = (1 - beta) * best_omega + beta * breakout_omega
+
+    # 9) Advance or reset stuck_count
+    if stuck_count > 0:
+        stuck_count += 1
+        if stuck_count >= config.stuckstep:
+            stuck_count = 0
+
+    # 10) (Optional) build a one-step trajectory for visualization
+    blended_traj = predict_trajectory(x, v_cmd, omega_cmd, config)
+
+    return [v_cmd, omega_cmd], blended_traj, stuck_count
 
 
 def calc_obstacle_cost(trajectory, ob, config):
@@ -375,7 +422,12 @@ def main(robot_type=RobotType.circle):
     velocity = d.actuator("robot-throttle_velocity")
     steering = d.actuator("robot-steering")
 
-    rx , ry = A_Star_path_finder(obstacleList,start_pos,final_pos)
+
+    raw = obstacleList
+    dense = densify(raw, spacing=0.3)
+
+
+    rx , ry = A_Star_path_finder(dense,start_pos,final_pos)
     target_x_list = [2 * x for x in rx]
     target_y_list = [2 * y for y in ry]
     max_path_id = len(target_x_list)-1
@@ -385,59 +437,81 @@ def main(robot_type=RobotType.circle):
               # prepare DWA configuration using default constructor and override defaults
     dwa_config = DWAConfig()
     # tune parameters to match your MuJoCo model
-    dwa_config.max_speed = 1.0  # [m/s]
-    dwa_config.min_speed = -0.5  # [m/s]
-    dwa_config.max_yaw_rate = 40.0 * math.pi / 180.0  # [rad/s]
-    dwa_config.max_accel = 0.2  # [m/ss]
-    dwa_config.max_delta_yaw_rate = 40.0 * math.pi / 180.0  # [rad/ss]
-    dwa_config.v_resolution = 0.01  # [m/s]
-    dwa_config.yaw_rate_resolution = 0.1 * math.pi / 180.0  # [rad/s]
-    dwa_config.dt = 0.1  # [s] Time tick for motion prediction
-    dwa_config.predict_time = 3.0  # [s]
-    dwa_config.to_goal_cost_gain = 0.15
-    dwa_config.speed_cost_gain = 1.0
-    dwa_config.obstacle_cost_gain = 1.0
-    dwa_config.robot_stuck_flag_cons = 0.001  # constant to prevent robot stucked
-    dwa_config.robot_radius = 1.0  # [m] for collision check
-
-    state=get_state(d)
+    dwa_config.max_speed = 1.5
+    dwa_config.min_speed = -0.4
+    dwa_config.max_yaw_rate = 240 * np.pi / 190
+    dwa_config.max_accel = 2
+    dwa_config.max_delta_yaw_rate = 12 * np.pi 
+    dwa_config.v_resolution = 0.1
+    dwa_config.yaw_rate_resolution = 6 * np.pi / 90
+    dwa_config.dt = 0.1
+    dwa_config.predict_time = 3
+    dwa_config.to_goal_cost_gain = 2
+    dwa_config.speed_cost_gain = .75
+    dwa_config.obstacle_cost_gain = 3
+    dwa_config.robot_radius = 0.2
+    dwa_config.robot_stuck_flag_cons = 0  # constant to prevent robot stucked
+    dwa_config.stuckstep =0
 
     
 
 
-    print(__file__ + " start!!")
-    # initial state [x(m), y(m), yaw(rad), v(m/s), omega(rad/s)]
-    x = state
-    # goal position [x(m), y(m)]
-    trajectory = np.array(x)
-    # input [forward speed, yaw_rate]
+    stuck_count=0            
+    d.qvel[0] = .4 * np.cos(yaw)
+    d.qvel[1] = .4 * np.sin(yaw)
 
     while True:
-
-        wall_xy = np.array([[x * 2, y * 2] for (x, y) in obstacleList])
+# initial state [x(m), y(m), yaw(rad), v(m/s), omega(rad/s)]
+        state=get_state(d)
+        wall_xy = np.array([[x*2, y*2] for x,y in dense])
         dyn_xy  = np.array([[m.geom_pos[g][0], m.geom_pos[g][1]] for g in obstacles])
         ob_xy = np.vstack([wall_xy, dyn_xy])
-        path_id_selected = min(path_id + 2, max_path_id)
+
+        path_id_selected = min(path_id + 1, max_path_id)
 
         target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
-        goal = target_selected
 
-        u, predicted_trajectory = dwa_control(x, dwa_config, target_selected, ob_xy)
-        x = motion(x, u, dwa_config.dt)  # simulate robot
-        trajectory = np.vstack((predicted_trajectory, x))  # store state history
+        curr_pos = state[:2]     
 
-        curr_pos = x[:2]     
-        target = np.array([target_x_list[path_id_selected],
-                       target_y_list[path_id_selected]])
-              # numpy array slice
-        dist = np.linalg.norm(curr_pos - target)
-        if dist <= 3.5 and path_id < len(target_x_list) - 1:
-            path_id += 1
-            print(path_id)
-            print(state, target_selected)
-            print(np.linalg.norm(curr_pos,target_selected))
-        elif dist <= 3.5 and path_id == len(target_x_list) - 1:
-            break
+        dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
+        ob_in_range = ob_xy[dists <= 6]
+
+        u, _traj ,stuck_count= dwa_control(state, dwa_config,target_selected , ob_in_range, stuck_count)
+        v_cmd, omega_cmd = u
+
+            # current_yaw = state[4]
+            # steering_correction=pid_controller.update(omega_cmd,current_yaw)
+
+        print(stuck_count)
+        print(v_cmd,omega_cmd)
+            # MuJoCo’s internal servo P‑controllers handle the low‑level tracking
+        velocity.ctrl = v_cmd
+        steering.ctrl = np.clip(omega_cmd,-4,4)
+
+        if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < 4:
+            if path_id < len(target_x_list) - 1:
+                path_id += 1
+            elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .3:
+                velocity.ctrl = 0
+            else:
+                pass
+
+            # Update obstables (bouncing movement)
+        for i, x in enumerate(obstacles):
+            dx = obstacle_direction[i][0]
+            dy = obstacle_direction[i][1]
+
+            px = m.geom_pos[x][0]
+            py = m.geom_pos[x][1]
+            pz = 0.02
+            nearest_dist = mujoco.mj_ray(m, d, [px, py, pz], obstacle_direction[i], None, 1, -1, unused)
+
+            if nearest_dist >= 0 and nearest_dist < 0.4:
+                obstacle_direction[i][0] = -dy
+                obstacle_direction[i][1] = dx
+
+            m.geom_pos[x][0] = m.geom_pos[x][0]+dx*0.001
+            m.geom_pos[x][1] = m.geom_pos[x][1]+dy*0.001
 
         if show_animation:
             plt.cla()
@@ -445,12 +519,12 @@ def main(robot_type=RobotType.circle):
             plt.gcf().canvas.mpl_connect(
                 'key_release_event',
                 lambda event: [exit(0) if event.key == 'escape' else None])
-            plt.plot(predicted_trajectory[:, 0], predicted_trajectory[:, 1], "-g")
-            plt.plot(x[0], x[1], "xr")
-            plt.plot(goal[0], goal[1], "xb")
+            plt.plot(-_traj[:, 0], _traj[:, 1], "-g")
+            plt.plot(state[0], state[1], "xr")
+            plt.plot(target_selected[0], target_selected[1], "xb")
             plt.plot(ob_xy[:, 0], ob_xy[:, 1], "ok")
-            plot_robot(x[0], x[1], x[2], config)
-            plot_arrow(x[0], x[1], x[2])
+            plot_robot(state[0], state[1], state[2], config)
+            plot_arrow(state[0], state[1], state[2])
             plt.axis("equal")
             plt.grid(True)
             plt.pause(0.0001)
