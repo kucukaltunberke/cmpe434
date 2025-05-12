@@ -33,8 +33,7 @@ def circuit2dots(circuit,resolution):
 
 def main():
     env = Circuit(model_path="../models/mushr_car/model.xml")
-    # 3) Sample obstacle points for A*
-    grid_resolution = 0.2  # [m]
+    grid_resolution = 0.2 
     robot_radius=0.3
     sx , sy = (3,0)
     gx , gy = (-3,0)

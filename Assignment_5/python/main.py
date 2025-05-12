@@ -68,10 +68,14 @@ def main():
                     target_yaw=np.degrees(np.arctan2(delta_y, delta_x))
 
                     
-                    steering_correction=pid_controller.update(target_yaw,curr_yaw)
-                    steering.ctrl=np.clip(steering_correction,-4,4)
+                    
 
+                    steering_correction=pid_controller.update(target_yaw,curr_yaw)
+                    
+                    print(steering_correction,"         ", d.qvel[5])
+                    steering.ctrl=np.clip(steering_correction,-4,4)
                                         
+
                     # Advance to next waypoint if close
                     error = np.linalg.norm([delta_x,delta_y])
                     if error < .5:

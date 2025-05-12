@@ -15,20 +15,19 @@ import numpy as np
 show_animation = True
 
 
-def dwa_control(x, config, goal, ob):
+def dwa_control(x, config, goal, ob, stuck_count):
     """
     Dynamic Window Approach control
     """
     dw = calc_dynamic_window(x, config)
 
-    u, trajectory = calc_control_and_trajectory(x, dw, config, goal, ob)
+    u, trajectory ,stuck_count= calc_control_and_trajectory(x, dw, config, goal, ob, stuck_count)
 
-    return u, trajectory
-
+    return u, trajectory,stuck_count
 
 class RobotType(Enum):
-    circle = 0
-    rectangle = 1
+    circle = 1
+    rectangle = 0
 
 
 class Config:
@@ -51,6 +50,7 @@ class Config:
         self.speed_cost_gain = 1.0
         self.obstacle_cost_gain = 1.0
         self.robot_stuck_flag_cons = 0.001  # constant to prevent robot stucked
+        self.stuckstep = 1000
         self.robot_type = RobotType.circle
 
         # if robot_type == RobotType.circle
@@ -144,47 +144,86 @@ def predict_trajectory(x_init, v, y, config):
     return trajectory
 
 
-def calc_control_and_trajectory(x, dw, config, goal, ob):
+def calc_control_and_trajectory(x, dw, config, goal, ob, stuck_count):
     """
-    calculation final input with dynamic window
+    Calculate the best [v, omega] using Dynamic Window Approach,
+    then, if the robot is stuck, blend that v toward a fixed backward speed.
+    Returns: best_u = [v_cmd, omega_cmd], best_trajectory, updated stuck_count
     """
+    # 1) Unpack state
+    curr_x, curr_y, curr_yaw, curr_v, curr_omega = x
 
-    x_init = x[:]
-    min_cost = float("inf")
-    best_u = [0.0, 0.0]
-    best_trajectory = np.array([x])
+    # 2) Helper to wrap into (-π, π]
+    def normalize(a):
+        return (a + np.pi) % (2*np.pi) - np.pi
 
-    # evaluate all trajectory with sampled input in dynamic window
+    # 3) Compute signed heading error
+    bearing_to_goal = np.arctan2(goal[1] - curr_y,
+                                 goal[0] - curr_x)
+    angle_diff =- normalize(bearing_to_goal - curr_yaw)
+
+    # 4) NORMAL DWA SEARCH
+    min_cost     = float("inf")
+    best_v       = 0.0
+    best_omega   = 0.0
+    best_traj    = np.array([x])
+
     for v in np.arange(dw[0], dw[1], config.v_resolution):
-        for y in np.arange(dw[2], dw[3], config.yaw_rate_resolution):
+        for omega in np.arange(dw[2], dw[3], config.yaw_rate_resolution):
+            traj = predict_trajectory(x, v, omega, config)
 
-            trajectory = predict_trajectory(x_init, v, y, config)
-            # calc cost
-            to_goal_cost = config.to_goal_cost_gain * calc_to_goal_cost(trajectory, goal)
-            speed_cost = config.speed_cost_gain * (config.max_speed - trajectory[-1, 3])
-            ob_cost = config.obstacle_cost_gain * calc_obstacle_cost(trajectory, ob, config)
+            c_goal  = config.to_goal_cost_gain   * calc_to_goal_cost(traj, goal)
+            c_speed = config.speed_cost_gain     * (config.max_speed - traj[-1,3])
+            c_obs   = config.obstacle_cost_gain  * calc_obstacle_cost(traj, ob, config)
 
-            final_cost = to_goal_cost + speed_cost + ob_cost
+            cost = c_goal + c_speed + c_obs
 
-            # search minimum trajectory
-            if min_cost >= final_cost:
-                min_cost = final_cost
-                best_u = [v, y]
-                best_trajectory = trajectory
-                if abs(best_u[0]) < config.robot_stuck_flag_cons \
-                        and abs(x[3]) < config.robot_stuck_flag_cons:
-                    # to ensure the robot do not get stuck in
-                    # best v=0 m/s (in front of an obstacle) and
-                    # best omega=0 rad/s (heading to the goal with
-                    # angle difference of 0)
-                    best_u[1] = -config.max_delta_yaw_rate
-    return best_u, best_trajectory
+            if cost < min_cost:
+                min_cost   = cost
+                best_v     = v
+                best_omega = omega
+                best_traj  = traj
+
+    # 5) Detect entering "stuck" mode
+    if stuck_count == 0 and \
+       abs(best_v) < config.robot_stuck_flag_cons and \
+       abs(curr_v) < config.robot_stuck_flag_cons:
+        stuck_count = 1
+
+    # 6) Compute blend factor β ∈ [0,1]
+    if stuck_count > 0:
+        beta = min(stuck_count / config.stuckstep, 1.0)
+    else:
+        beta = 0.0
+
+    # 7) Mix forward (best_v) with backward (-0.2)
+    backward_speed = -0.3
+    v_cmd = (1 - beta) * best_v + beta * backward_speed
+
+    # 8) Mix heading: DWA’s omega vs. a fixed break-out turn
+    breakout_omega = np.sign(angle_diff) * 3
+    omega_cmd     = (1 - beta) * best_omega + beta * breakout_omega
+
+    # 9) Advance or reset stuck_count
+    if stuck_count > 0:
+        stuck_count += 1
+        if stuck_count >= config.stuckstep:
+            stuck_count = 0
+
+    # 10) (Optional) build a one-step trajectory for visualization
+    blended_traj = predict_trajectory(x, v_cmd, omega_cmd, config)
+
+    return [v_cmd, omega_cmd], blended_traj, stuck_count
 
 
 def calc_obstacle_cost(trajectory, ob, config):
     """
     calc obstacle cost inf: collision
     """
+    if ob.shape[0] == 0:
+        return  0.0
+    
+
     ox = ob[:, 0]
     oy = ob[:, 1]
     dx = trajectory[:, 0] - ox[:, None]
@@ -214,18 +253,21 @@ def calc_obstacle_cost(trajectory, ob, config):
     return 1.0 / min_r  # OK
 
 
-def calc_to_goal_cost(trajectory, goal):
-    """
-        calc to goal cost with angle difference
-    """
 
+def calc_to_goal_cost(trajectory, goal, alpha=0, beta=1.5):
+    # α⋅distance + β⋅heading‐error
     dx = goal[0] - trajectory[-1, 0]
     dy = goal[1] - trajectory[-1, 1]
-    error_angle = math.atan2(dy, dx)
-    cost_angle = error_angle - trajectory[-1, 2]
-    cost = abs(math.atan2(math.sin(cost_angle), math.cos(cost_angle)))
+    dist_cost = np.hypot(dx, dy)
 
-    return cost
+    # heading error
+    goal_yaw   = math.atan2(dy, dx)
+    traj_yaw   = trajectory[-1, 2]
+    yaw_error  = abs(math.atan2(
+                    math.sin(goal_yaw-traj_yaw),
+                    math.cos(goal_yaw-traj_yaw)))
+    return alpha * dist_cost + beta * yaw_error
+
 
 
 def plot_arrow(x, y, yaw, length=0.5, width=0.1):  # pragma: no cover

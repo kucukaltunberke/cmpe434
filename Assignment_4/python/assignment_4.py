@@ -54,7 +54,7 @@ def main():
                 steering.ctrl=np.clip(steering_correction,-4,4)
 
                 
-                print(curr_yaw, target_yaw, current_pos,target_pos,  steering_correction)
+                print(steering_correction)
                 
                 # Advance to next waypoint if close
                 error = np.linalg.norm([delta_x,delta_y])
