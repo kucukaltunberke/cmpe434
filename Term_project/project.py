@@ -144,6 +144,7 @@ def main():
     m.opt.timestep   = 0.01                         # 5× larger dt than default (0.002)
     m.opt.iterations = 10      
     d = mujoco.MjData(m)
+    dt_mujoco=m.opt.timestep
 
     obstacles = [m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.startswith("Z")]
     uniform_direction_dist = sp.stats.uniform_direction(2)
@@ -169,26 +170,39 @@ def main():
               # prepare DWA configuration using default constructor and override defaults
       dwa_config = DWAConfig()
     # tune parameters to match your MuJoCo model
-      dwa_config.max_speed = 1.2
+      dwa_config.max_speed = 1.0
       dwa_config.min_speed = -0.4
       dwa_config.max_yaw_rate = 360 * np.pi / 190
-      dwa_config.max_accel = 2
+      dwa_config.max_accel = 4
       dwa_config.max_delta_yaw_rate = 6 * np.pi 
       dwa_config.v_resolution = 0.1
       dwa_config.yaw_rate_resolution = 6 * np.pi / 90
       dwa_config.dt = 0.1
-      dwa_config.predict_time = 1.0
-      dwa_config.to_goal_cost_gain = 2.0
+      dwa_config.predict_time = 1.5
+      dwa_config.to_goal_cost_gain = 2.5
       dwa_config.speed_cost_gain = .5
-      dwa_config.obstacle_cost_gain = 1.0
-      dwa_config.robot_radius = 0.1
+      dwa_config.obstacle_cost_gain = 1.2
+      dwa_config.robot_radius = 0.15
       dwa_config.robot_stuck_flag_cons = 0  # constant to prevent robot stucked
-      dwa_config.stuckstep =0
       dwa_config.robot_type = RobotType.circle
 
-                  
-      d.qvel[0] = .4 * np.cos(yaw)
-      d.qvel[1] = .4 * np.sin(yaw)
+      alpha=0.15
+
+      orientation_phase   = None 
+      phase_start_time    = 0.0
+      angle_correction=0
+      freq=100
+      yaw_tol=np.deg2rad(60)
+      orient_forward_t    = 1
+      orient_reverse_t    = 1
+        # how hard to steer (±max steering angle)
+      steer_lock          = np.pi   # 30° lock—tune to your model
+        # how fast to go forward/back
+      orient_speed        = 1.0       # m/s forward
+      orient_back_speed   = -1.0 
+
+      prev_v_cmd = 0
+      prev_steer_cmd = 0.0
 
     #   kp, kd, ki, dt = 1, 0, 0, 0.1
     #   pid_controller = PIDcontroller(kp, kd, ki, dt)
@@ -203,28 +217,83 @@ def main():
             dyn_xy  = np.array([[m.geom_pos[g][0], m.geom_pos[g][1]] for g in obstacles])
             ob_xy = np.vstack([wall_xy, dyn_xy])
 
-            path_id_selected = min(path_id , max_path_id)
+            path_id_selected = min(path_id + 1, max_path_id)
 
             target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
 
             curr_pos = state[:2]     
 
-            dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
-            ob_in_range = ob_xy[dists <= 6]
+            delta_x=target_selected[0]-curr_pos[0]
+            delta_y=target_selected[1]-curr_pos[1]
+            target_yaw=np.arctan2(delta_y, delta_x)
+            curr_yaw=state[2]
+            raw_diff=target_yaw-curr_yaw
+                 # wrap into (-π, π]
+            yaw_err   = (raw_diff + np.pi) % (2*np.pi) - np.pi
 
-            u, _traj = dwa_control(state, dwa_config,target_selected , ob_in_range)
-            v_cmd, omega_cmd = u
+            if orientation_phase is None and abs(yaw_err) > yaw_tol:
+                orientation_phase = 'fwd'
+                phase_start_time  = time.time()
 
-            # current_yaw = state[4]
-            # steering_correction=pid_controller.update(omega_cmd,current_yaw)
+            # 3) if we’re in a orientation_phase, override controls
+            if orientation_phase is not None:
+                now = time.time()
 
-            
-            print(v_cmd,omega_cmd)
-            # MuJoCo’s internal servo P‑controllers handle the low‑level tracking
-            velocity.ctrl = v_cmd
-            steering.ctrl = np.clip(omega_cmd,-4,4)
+                # --- compute your raw commands ---
+                # — forward locked steer —
+                if orientation_phase == 'fwd':
+                    raw_v_cmd   =  orient_speed
+                    raw_steer_cmd   = np.sign(yaw_err) * steer_lock
+                    # once time’s up, switch to reverse
+                    if now - phase_start_time > orient_forward_t:
+                        orientation_phase = 'rev'
+                        phase_start_time  = now
 
-            if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < 2:
+                # — reverse locked steer —
+                elif orientation_phase == 'rev':
+                    print("aa")
+                    raw_v_cmd   = orient_back_speed
+                    raw_steer_cmd   = -np.sign(yaw_err) * steer_lock
+                    # when done, either finish or repeat
+                    if now - phase_start_time > orient_reverse_t:
+                        # if still off by more than tol, do another forward pass
+                        if abs(yaw_err) > yaw_tol:
+                            orientation_phase = 'fwd'
+                            phase_start_time  = now
+                        else:
+                            # heading is good → clear override
+                            orientation_phase = None
+
+              # --- now filter them ---
+                v_cmd     = alpha * raw_v_cmd     + (1 - alpha) * prev_v_cmd
+                steer_cmd = alpha * raw_steer_cmd + (1 - alpha) * prev_steer_cmd
+        
+                # apply to the actuators
+                velocity.ctrl = v_cmd
+                steering.ctrl = steer_cmd
+         
+                # remember for next frame
+                prev_v_cmd     = v_cmd
+                prev_steer_cmd = steer_cmd
+
+            else:
+
+                dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
+                ob_in_range = ob_xy[dists <= 6]
+
+                u, _traj = dwa_control(state, dwa_config,target_selected , ob_in_range)
+                v_cmd, omega_cmd = u
+
+                # current_yaw = state[4]
+                # steering_correction=pid_controller.update(omega_cmd,current_yaw)
+
+                
+                print(v_cmd,omega_cmd)
+                # MuJoCo’s internal servo P‑controllers handle the low‑level tracking
+                velocity.ctrl = v_cmd
+                steering.ctrl = np.clip(omega_cmd,-4,4)
+
+            if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < 1:
                 if path_id < len(target_x_list) - 1:
                     path_id += 1
                 elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .3:

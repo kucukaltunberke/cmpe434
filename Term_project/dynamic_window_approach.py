@@ -214,7 +214,7 @@ def calc_obstacle_cost(trajectory, ob, config):
     return 1.0 / min_r  # OK
 
 
-def calc_to_goal_cost(trajectory, goal, alpha=1, beta=1):
+def calc_to_goal_cost(trajectory, goal, alpha=1, beta=0.2):
     # α⋅distance + β⋅heading‐error
     dx = goal[0] - trajectory[-1, 0]
     dy = goal[1] - trajectory[-1, 1]
