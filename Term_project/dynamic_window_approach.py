@@ -21,9 +21,9 @@ def dwa_control(x, config, goal, ob):
     """
     dw = calc_dynamic_window(x, config)
 
-    u, trajectory = calc_control_and_trajectory(x, dw, config, goal, ob)
+    u, trajectory ,stuck= calc_control_and_trajectory(x, dw, config, goal, ob)
 
-    return u, trajectory
+    return u, trajectory,stuck
 
 
 class RobotType(Enum):
@@ -148,7 +148,7 @@ def calc_control_and_trajectory(x, dw, config, goal, ob):
     """
     calculation final input with dynamic window
     """
-
+    stuck=0
     x_init = x[:]
     min_cost = float("inf")
     best_u = [0.0, 0.0]
@@ -177,14 +177,18 @@ def calc_control_and_trajectory(x, dw, config, goal, ob):
                     # best v=0 m/s (in front of an obstacle) and
                     # best omega=0 rad/s (heading to the goal with
                     # angle difference of 0)
-                    best_u[1] = -config.max_delta_yaw_rate
-    return best_u, best_trajectory
+                    stuck=1
+    return best_u, best_trajectory,stuck
 
 
 def calc_obstacle_cost(trajectory, ob, config):
     """
     calc obstacle cost inf: collision
     """
+
+    if ob.size==0:
+        return 0.0
+    
     ox = ob[:, 0]
     oy = ob[:, 1]
     dx = trajectory[:, 0] - ox[:, None]
@@ -214,7 +218,7 @@ def calc_obstacle_cost(trajectory, ob, config):
     return 1.0 / min_r  # OK
 
 
-def calc_to_goal_cost(trajectory, goal, alpha=1, beta=0.2):
+def calc_to_goal_cost(trajectory, goal, alpha=1, beta=0.1):
     # α⋅distance + β⋅heading‐error
     dx = goal[0] - trajectory[-1, 0]
     dy = goal[1] - trajectory[-1, 1]

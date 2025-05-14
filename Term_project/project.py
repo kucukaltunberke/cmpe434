@@ -33,12 +33,13 @@ def get_state(d):
     
     return np.array([x, y, yaw, v, omega])
 
-def densify(obstacleList, spacing=0.05):
+# function to represent obstacles edges
+def densify(obstacleList,width, spacing):
     dense = []
     for (x,y) in obstacleList:
         # look at your 4‐neighborhood walls and interpolate…
-        for dx in np.arange(-0.5, 0.5, spacing):
-            for dy in np.arange(-0.5, 0.5, spacing):
+        for dx in np.arange(-width, width,spacing):
+            for dy in np.arange(-width, width, spacing):
                 dense.append((x+dx, y+dy))
     return dense
 
@@ -125,7 +126,7 @@ def main():
         )
 
     raw = obstacleList
-    dense = densify(raw, spacing=0.3)
+    dense = densify(raw,0.5,0.25)
 
     rx , ry = A_Star_path_finder(dense,start_pos,final_pos)
     target_x_list = [2 * x for x in rx]
@@ -162,25 +163,26 @@ def main():
       # tune parameters
       dwa_config = DWAConfig() 
       dwa_config.max_speed = 1.7
-      dwa_config.min_speed = -0.4
+      dwa_config.min_speed = -1
       dwa_config.max_yaw_rate = 360 * np.pi / 180
-      dwa_config.max_accel = 4
+      dwa_config.max_accel = 8
       dwa_config.max_delta_yaw_rate = 8.5 * np.pi 
       dwa_config.v_resolution = 0.1
       dwa_config.yaw_rate_resolution = 6 * np.pi / 90
       dwa_config.dt = 0.1
       dwa_config.predict_time = .4
       dwa_config.to_goal_cost_gain = 3.0
-      dwa_config.speed_cost_gain = 0.6
-      dwa_config.obstacle_cost_gain = 4.0
-      dwa_config.robot_radius = 0.35
+      dwa_config.speed_cost_gain = 0.45
+      dwa_config.obstacle_cost_gain = 2.0
+      dwa_config.robot_radius = 0.1
+      dwa_config.robot_stuck_flag_cons = 0.001  # constant to prevent robot stucked
 
       #low pass filter value
       alpha=0.1
 
       orientation_phase   = None 
       phase_start_time    = 0.0
-      yaw_tol=np.deg2rad(70)
+      yaw_tol=np.deg2rad(50)
       orient_forward_t    = .7
       orient_reverse_t    = .7
       # how hard to steer (±max steering angle)
@@ -195,8 +197,6 @@ def main():
       max_path_id = len(target_x_list)-1
       path_id=0
 
-      stuck = 0
-
       while viewer.is_running() and time.time() - start < 3000:
         step_start = time.time()
 
@@ -205,17 +205,18 @@ def main():
             state=get_state(d)
             wall_xy = np.array([[x*2, y*2] for x,y in dense])
             dyn_xy  = np.array([[m.geom_pos[g][0], m.geom_pos[g][1]] for g in obstacles])
-            ob_xy = np.vstack([wall_xy, dyn_xy])
+            dense_dy=densify(dyn_xy,0.12,0.04)
+            ob_xy = np.vstack([wall_xy, dense_dy])
 
             path_id_selected = min(path_id + 1 , max_path_id)
 
             target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
 
             target_point_obstacle_check = np.linalg.norm(dyn_xy-target_selected, axis=1)
-            target_point_occupied = dyn_xy[target_point_obstacle_check <0.6]
+            target_point_occupied = dyn_xy[target_point_obstacle_check <1]
 
-
-
+            # increase the path_id if there is a obstacle near it. 
+            # this sets a better target for dwa algorithm
             while target_point_occupied.size != 0 and path_id != max_path_id :
                 path_id = min(path_id + 1 ,max_path_id)
                 path_id_selected = min(path_id + 1 ,max_path_id)
@@ -223,14 +224,11 @@ def main():
                 target_point_obstacle_check = np.linalg.norm(dyn_xy-target_selected, axis=1)
                 target_point_occupied = dyn_xy[target_point_obstacle_check <1]
 
-
             curr_pos = state[:2]     
 
-
             dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
-            ob_danger   = ob_xy[dists <= 1]
-            ob_in_range = ob_xy[dists <= 6]
-            
+            ob_danger   = ob_xy[dists <= .4]
+            ob_in_range = ob_xy[dists <= 3]            
 
             delta_x=target_selected[0]-curr_pos[0]
             delta_y=target_selected[1]-curr_pos[1]
@@ -278,11 +276,13 @@ def main():
                 steering.ctrl = steer_cmd
          
             else:
-                u, _traj= dwa_control(state, dwa_config,target_selected , ob_in_range)
+                u, _traj, stuck= dwa_control(state, dwa_config,target_selected , ob_in_range)
                 raw_v_cmd, raw_steer_cmd = u
        
                 raw_steer_cmd *= 2.5
         
+                if stuck==1 and path_id!=max_path_id:
+                    path_id=max(path_id - 1, 0)
 
                 # low pass filtering data  
                 # clipped steering cmd to avoid high peaks that make the car jump  
@@ -302,7 +302,7 @@ def main():
             if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .4:
                 if path_id < max_path_id:
                     path_id += 1
-                elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .3:
+                elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .3 and ob_danger.size == 0:
                     velocity.ctrl = 0
                 else:
                     pass
