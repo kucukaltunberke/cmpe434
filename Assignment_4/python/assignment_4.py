@@ -30,8 +30,6 @@ def main():
         steering = d.actuator("steering")
         throttle.ctrl=4
 
-
-        start_time = time.time()
         path_idx = 0
 
         while viewer.is_running():
@@ -42,19 +40,13 @@ def main():
                 target_pos = env.reference_path[path_idx]
 
                 w, xq, yq, zq = d.qpos[3:7]
-
-                # 1) signed yaw
                 curr_yaw = np.degrees(np.arctan2(2*(w*zq + xq*yq),1 - 2*(yq*yq + zq*zq)))                
                 delta_x=target_pos[0]-current_pos[0]
                 delta_y=target_pos[1]-current_pos[1]
                 target_yaw=np.degrees(np.arctan2(delta_y, delta_x))
-
                 
                 steering_correction=controller.update(target_yaw,curr_yaw)
                 steering.ctrl=np.clip(steering_correction,-4,4)
-
-                
-                print(steering_correction)
                 
                 # Advance to next waypoint if close
                 error = np.linalg.norm([delta_x,delta_y])

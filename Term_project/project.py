@@ -25,7 +25,7 @@ def get_state(d):
     yaw = np.arctan2(2*(w*zq + xq*yq), 1 - 2*(yq*yq + zq*zq))
     
     # Get velocity in robot frame
-    vx, vy, vz = d.qvel[0], d.qvel[1], d.qvel[2]
+    vx, vy= d.qvel[0], d.qvel[1]
     v = vx*np.cos(yaw) + vy*np.sin(yaw)  # Forward speed
     
     # Angular velocity (yaw rate)
@@ -293,11 +293,9 @@ def main():
                 velocity.ctrl = v_cmd
                 steering.ctrl = np.clip(steer_cmd,-4,4)
 
-
             # remember for next frame
             prev_v_cmd     = v_cmd
             prev_steer_cmd = steer_cmd
-
 
             if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .4:
                 if path_id < max_path_id:

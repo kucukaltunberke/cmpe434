@@ -26,10 +26,8 @@ def circuit2dots(circuit,resolution):
 
     for i in range(6):
         ox.append(0)
-        oy.append(-1+float(i)/3)
-        
+        oy.append(-1+float(i)/3)        
     return ox, oy
-
 
 def main():
     env = Circuit(model_path="../models/mushr_car/model.xml")
@@ -48,7 +46,6 @@ def main():
         plt.plot(gx, gy, "xb")
         plt.grid(True)
         plt.axis("equal")
-
     
     if algorithm_type == 1:
         rx, ry = prm_planning(sx, sy, gx, gy, ox, oy, robot_radius, rng=None)
@@ -58,12 +55,9 @@ def main():
             plt.pause(0.001)
             plt.show()
 
-    
     elif algorithm_type == 2:
-
         obstacleList = []
         for i in range(len(ox)): obstacleList.append(( ox[i], oy[i] , 0.1))
-        
 
         rrt = RRT(
         start=[sx, sy],
@@ -71,8 +65,8 @@ def main():
         rand_area=[-8, 23],
         obstacle_list=obstacleList,
         play_area=[-13, 13, -3, 14],
-        robot_radius=robot_radius
-        )
+        robot_radius=robot_radius)
+
         path = rrt.planning(animation=show_animation)
         
         if path is None:
@@ -137,7 +131,6 @@ def main():
                 plt.grid(True)
                 plt.show()
 
-
     elif algorithm_type == 5:
         obstacleList = []
         for i in range(len(ox)): obstacleList.append(( ox[i], oy[i] , 0.1))
@@ -157,7 +150,6 @@ def main():
             plt.pause(0.001)
 
             plt.show()
-
 
     elif algorithm_type == 6:
         a_star = AStarPlanner(ox, oy, grid_resolution, robot_radius)

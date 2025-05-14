@@ -32,17 +32,12 @@ def main():
     d = env.d
     m = env.m
     
-    # Initialize controller
-
-
     # Launch viewer
     with mujoco.viewer.launch_passive(m, d, key_callback=mujoco_viewer_callback) as viewer:
         throttle = d.actuator("throttle_velocity")
         steering = d.actuator("steering")
         throttle.ctrl=speed
 
-
-        start_time = time.time()
         path_idx = 0
 
         kp, kd, ki, dt = 0.3, 0.03, 0.0001, 0.1
@@ -60,33 +55,25 @@ def main():
                 curr_yaw = np.degrees(np.arctan2(2*(w*zq + xq*yq),1 - 2*(yq*yq + zq*zq)))                
                 
                 if controller_type==4:
-                    
-                    target_pos = env.reference_path[path_idx]
 
+                    target_pos = env.reference_path[path_idx]
                     delta_x=target_pos[0]-current_pos[0]
                     delta_y=target_pos[1]-current_pos[1]
                     target_yaw=np.degrees(np.arctan2(delta_y, delta_x))
 
-                    
-                    
-
                     steering_correction=pid_controller.update(target_yaw,curr_yaw)
                     
-                    print(steering_correction,"         ", d.qvel[5])
                     steering.ctrl=np.clip(steering_correction,-4,4)
                                         
-
                     # Advance to next waypoint if close
                     error = np.linalg.norm([delta_x,delta_y])
                     if error < .5:
                         path_idx = (path_idx + 1) % len(env.reference_path)
 
                 elif controller_type ==5:
-                    
 
                     point_behind=env.reference_path[path_idx-1]
                     point_ahead=env.reference_path[path_idx]
-
 
                     intersections=pure_pursuit_controller.line_circle_intersection(current_pos,point_ahead,point_behind)
                     if intersections==None:
@@ -94,18 +81,15 @@ def main():
                     else:
                         target_pos=pure_pursuit_controller.find_target_point(intersections,point_ahead,point_behind)
                     
-
                     delta_x=target_pos[0]-current_pos[0]
                     delta_y=target_pos[1]-current_pos[1]
                     target_yaw=np.degrees(np.arctan2(delta_y, delta_x))
-
 
                     steering_correction=pid_controller.update(target_yaw,curr_yaw)
                     steering.ctrl=np.clip(steering_correction,-4,4)
 
                     dist_next_point = np.linalg.norm(np.array(point_ahead) - np.array(current_pos))
 
-                    
                     if dist_next_point <.9:
                         path_idx += 1
                         if path_idx==11:

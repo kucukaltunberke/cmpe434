@@ -4,7 +4,6 @@ class Pure_pursuit:
     def __init__(self,look_ahead_distance):
         self.look_ahead_distance=look_ahead_distance
 
-
     def line_circle_intersection(self,currentPos, point_ahead, point_behind):
 
         currentX , currentY= currentPos
@@ -28,18 +27,15 @@ class Pure_pursuit:
         if discriminant >= 0:
         
             # calculate the solutions
-
             sign_dy = 1 if dy >= 0 else -1
             sol_x1 = (D * dy + sign_dy * dx * np.sqrt(discriminant)) / dr**2
             sol_x2 = (D * dy - sign_dy * dx * np.sqrt(discriminant)) / dr**2
             sol_y1 = (- D * dx + abs(dy) * np.sqrt(discriminant)) / dr**2
             sol_y2 = (- D * dx - abs(dy) * np.sqrt(discriminant)) / dr**2
 
-            
             # add currentX and currentY back to the solutions, offset the system back to its original position
             sol1 = [sol_x1 + currentX, sol_y1 + currentY]
             sol2 = [sol_x2 + currentX, sol_y2 + currentY]
-
             return [sol1, sol2]
         else:
             return None
@@ -53,7 +49,6 @@ class Pure_pursuit:
         
         point_validity_1=False
         point_validity_2=False
-
 
         # find min and max x y values
         minX = min(x1, x2)

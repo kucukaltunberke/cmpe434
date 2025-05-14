@@ -9,12 +9,11 @@ class PIDcontroller:
         self.prev_err=0
         self.error_sum=0
 
-
     def update(self,target_pos, curr_pos):
         target_pos = np.array(target_pos)
         curr_pos=np.array(curr_pos)
 
-        #error is wrapped into[-180,180]
+        #error angle is wrapped into[-180,180]
         err = (target_pos - curr_pos + 180) % 360 - 180
 
         p=self.kp* err
