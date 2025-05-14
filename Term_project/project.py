@@ -31,7 +31,7 @@ def get_state(d):
     v = vx*np.cos(yaw) + vy*np.sin(yaw)  # Forward speed
     
     # Angular velocity (yaw rate)
-    omega = d.qvel[5]  # Assuming rotational velocity is in qvel[5]
+    omega = d.qvel[5]  
     
     return np.array([x, y, yaw, v, omega])
 
@@ -144,7 +144,6 @@ def main():
     m.opt.timestep   = 0.01                         # 5× larger dt than default (0.002)
     m.opt.iterations = 10      
     d = mujoco.MjData(m)
-    dt_mujoco=m.opt.timestep
 
     obstacles = [m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.startswith("Z")]
     uniform_direction_dist = sp.stats.uniform_direction(2)
@@ -170,7 +169,7 @@ def main():
               # prepare DWA configuration using default constructor and override defaults
       dwa_config = DWAConfig()
     # tune parameters to match your MuJoCo model
-      dwa_config.max_speed = 2
+      dwa_config.max_speed = 1.7
       dwa_config.min_speed = -0.4
       dwa_config.max_yaw_rate = 360 * np.pi / 190
       dwa_config.max_accel = 4
@@ -178,12 +177,12 @@ def main():
       dwa_config.v_resolution = 0.1
       dwa_config.yaw_rate_resolution = 6 * np.pi / 90
       dwa_config.dt = 0.1
-      dwa_config.predict_time = 2
-      dwa_config.to_goal_cost_gain = 3
-      dwa_config.speed_cost_gain = .1
-      dwa_config.obstacle_cost_gain = 3.5
-      dwa_config.robot_radius = 0.15
-      dwa_config.robot_stuck_flag_cons = 0  # constant to prevent robot stucked
+      dwa_config.predict_time = .4
+      dwa_config.to_goal_cost_gain = 3.0
+      dwa_config.speed_cost_gain = 0.6
+      dwa_config.obstacle_cost_gain = 5.0
+      dwa_config.robot_radius = 0.2
+      dwa_config.robot_stuck_flag_cons = 0.001  # constant to prevent robot stucked
       dwa_config.robot_type = RobotType.circle
 
       alpha=0.1
@@ -217,11 +216,31 @@ def main():
             dyn_xy  = np.array([[m.geom_pos[g][0], m.geom_pos[g][1]] for g in obstacles])
             ob_xy = np.vstack([wall_xy, dyn_xy])
 
-            path_id_selected = min(path_id + 1, max_path_id)
+            path_id_selected = min(path_id + 1 , max_path_id)
 
             target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
 
+            target_point_obstacle_check = np.linalg.norm(dyn_xy-target_selected, axis=1)
+            target_point_occupied = dyn_xy[target_point_obstacle_check <1]
+
+
+
+            while target_point_occupied.size != 0 and path_id != max_path_id :
+                print("atladımm")
+                path_id = min(path_id + 1 ,max_path_id)
+                path_id_selected = min(path_id + 1 ,max_path_id)
+                target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
+                target_point_obstacle_check = np.linalg.norm(dyn_xy-target_selected, axis=1)
+                target_point_occupied = dyn_xy[target_point_obstacle_check <1]
+
+
             curr_pos = state[:2]     
+
+
+            dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
+            ob_danger   = ob_xy[dists <1]
+            ob_in_range = ob_xy[dists <= 6]
+            
 
             delta_x=target_selected[0]-curr_pos[0]
             delta_y=target_selected[1]-curr_pos[1]
@@ -231,7 +250,7 @@ def main():
                  # wrap into (-π, π]
             yaw_err   = (raw_diff + np.pi) % (2*np.pi) - np.pi
 
-            if orientation_phase is None and abs(yaw_err) > yaw_tol:
+            if orientation_phase is None and abs(yaw_err) > yaw_tol and ob_danger.size ==0:
                 orientation_phase = 'fwd'
                 phase_start_time  = time.time()
 
@@ -276,19 +295,18 @@ def main():
 
             else:
 
-                dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
-                ob_in_range = ob_xy[dists <= 6]
 
-                u, _traj = dwa_control(state, dwa_config,target_selected , ob_in_range)
+
+                u, _traj= dwa_control(state, dwa_config,target_selected , ob_in_range)
                 raw_v_cmd, raw_steer_cmd = u
 
+                
                 raw_steer_cmd *= 2.5
 
                 v_cmd     = alpha * raw_v_cmd     + (1 - alpha) * prev_v_cmd
                 steer_cmd = alpha * raw_steer_cmd + (1 - alpha) * prev_steer_cmd
 
                 
-                print(raw_steer_cmd,raw_v_cmd)
                 # MuJoCo’s internal servo P‑controllers handle the low‑level tracking
                 velocity.ctrl = v_cmd
                 steering.ctrl = np.clip(steer_cmd,-4,4)
@@ -299,8 +317,8 @@ def main():
             prev_steer_cmd = steer_cmd
 
 
-            if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < 1:
-                if path_id < len(target_x_list) - 1:
+            if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .4:
+                if path_id < max_path_id:
                     path_id += 1
                 elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .3:
                     velocity.ctrl = 0
