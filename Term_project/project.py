@@ -4,12 +4,10 @@ import mujoco.viewer
 import random
 import numpy as np
 import scipy as sp
-from dynamic_window_approach import RobotType
 import cmpe434_dungeon as dungeon
 import matplotlib.pyplot as plt
 from a_star import AStarPlanner
 from dynamic_window_approach import dwa_control, Config as DWAConfig
-from controller4 import PIDcontroller
 
 # Helper construsts for the viewer for pause/unpause functionality.
 paused = False
@@ -35,8 +33,17 @@ def get_state(d):
     
     return np.array([x, y, yaw, v, omega])
 
+def densify(obstacleList, spacing=0.05):
+    dense = []
+    for (x,y) in obstacleList:
+        # look at your 4‐neighborhood walls and interpolate…
+        for dx in np.arange(-0.5, 0.5, spacing):
+            for dy in np.arange(-0.5, 0.5, spacing):
+                dense.append((x+dx, y+dy))
+    return dense
 
-def A_Star_path_finder(obstacleList,start_pos,final_pos,grid_resolution=0.5,robot_radius=0.3):
+
+def A_Star_path_finder(obstacleList,start_pos,final_pos,grid_resolution=0.5,robot_radius=0.49):
     ox , oy = zip(*obstacleList)
     sx , sy = start_pos[0] , start_pos[1]
     gx , gy = final_pos[0] , final_pos[1]
@@ -75,17 +82,6 @@ def main():
         scene_spec.worldbody.add_geom(name='R{}'.format(index), type=mujoco.mjtGeom.mjGEOM_PLANE, size=[(xmax-xmin)+1, (ymax-ymin)+1, 0.1], rgba=[0.8, 0.6, 0.4, 1],  pos=[(xmin+xmax), (ymin+ymax), 0])
 
     obstacleList=[]
-
-    def densify(obstacleList, spacing=0.05):
-        dense = []
-        for (x,y) in obstacleList:
-            # look at your 4‐neighborhood walls and interpolate…
-            # simplest: jitter a bit of points inside the square
-            for dx in np.arange(-0.5, 0.5, spacing):
-                for dy in np.arange(-0.5, 0.5, spacing):
-                    dense.append((x+dx, y+dy))
-        return dense
-
 
     for pos, tile in tiles.items():
         if tile == "#":
@@ -135,13 +131,15 @@ def main():
     target_x_list = [2 * x for x in rx]
     target_y_list = [2 * y for y in ry]
 
+    # add green tiles to show A* points 
     for i in range(len(rx)):
         scene_spec.worldbody.add_site(type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.2, 0.2, 0.01], rgba=[0, 1, 0, 1],  pos=[target_x_list[i],target_y_list[i], 0])
 
     # Initalize our simulation
     # Roughly, m keeps static (model) information, and d keeps dynamic (state) information. 
     m = scene_spec.compile()
-    m.opt.timestep   = 0.01                         # 5× larger dt than default (0.002)
+    # 5× larger dt than default dt of mujoco (0.002)
+    m.opt.timestep   = 0.01                         
     m.opt.iterations = 10      
     d = mujoco.MjData(m)
 
@@ -151,7 +149,6 @@ def main():
     unused = np.zeros(1, dtype=np.int32)
 
     with mujoco.viewer.launch_passive(m, d, key_callback=mujoco_viewer_callback) as viewer:
-
       viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
       viewer.cam.fixedcamid = m.camera("robot-third_person").id
 
@@ -160,51 +157,45 @@ def main():
       velocity = d.actuator("robot-throttle_velocity")
       steering = d.actuator("robot-steering")
 
-
-
-      max_path_id = len(target_x_list)-1
-      path_id=0
-      # Close the viewer automatically after 30 wall-clock-seconds.
       start = time.time()
-              # prepare DWA configuration using default constructor and override defaults
-      dwa_config = DWAConfig()
-    # tune parameters to match your MuJoCo model
+
+      # tune parameters
+      dwa_config = DWAConfig() 
       dwa_config.max_speed = 1.7
       dwa_config.min_speed = -0.4
-      dwa_config.max_yaw_rate = 360 * np.pi / 190
+      dwa_config.max_yaw_rate = 360 * np.pi / 180
       dwa_config.max_accel = 4
-      dwa_config.max_delta_yaw_rate = 6 * np.pi 
+      dwa_config.max_delta_yaw_rate = 8.5 * np.pi 
       dwa_config.v_resolution = 0.1
       dwa_config.yaw_rate_resolution = 6 * np.pi / 90
       dwa_config.dt = 0.1
       dwa_config.predict_time = .4
       dwa_config.to_goal_cost_gain = 3.0
       dwa_config.speed_cost_gain = 0.6
-      dwa_config.obstacle_cost_gain = 5.0
-      dwa_config.robot_radius = 0.2
-      dwa_config.robot_stuck_flag_cons = 0.001  # constant to prevent robot stucked
-      dwa_config.robot_type = RobotType.circle
+      dwa_config.obstacle_cost_gain = 4.0
+      dwa_config.robot_radius = 0.35
 
+      #low pass filter value
       alpha=0.1
 
       orientation_phase   = None 
       phase_start_time    = 0.0
-      angle_correction=0
-      freq=100
-      yaw_tol=np.deg2rad(60)
+      yaw_tol=np.deg2rad(70)
       orient_forward_t    = .7
       orient_reverse_t    = .7
-        # how hard to steer (±max steering angle)
-      steer_lock          = np.pi   # 30° lock—tune to your model
-        # how fast to go forward/back
-      orient_speed        = 1.0       # m/s forward
+      # how hard to steer (±max steering angle)
+      steer_lock          = np.pi * 2 
+      # how fast to go forward/back
+      orient_speed        = 1.0
       orient_back_speed   = -1.0 
 
       prev_v_cmd = 0
       prev_steer_cmd = 0.0
 
-    #   kp, kd, ki, dt = 1, 0, 0, 0.1
-    #   pid_controller = PIDcontroller(kp, kd, ki, dt)
+      max_path_id = len(target_x_list)-1
+      path_id=0
+
+      stuck = 0
 
       while viewer.is_running() and time.time() - start < 3000:
         step_start = time.time()
@@ -221,12 +212,11 @@ def main():
             target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
 
             target_point_obstacle_check = np.linalg.norm(dyn_xy-target_selected, axis=1)
-            target_point_occupied = dyn_xy[target_point_obstacle_check <1]
+            target_point_occupied = dyn_xy[target_point_obstacle_check <0.6]
 
 
 
             while target_point_occupied.size != 0 and path_id != max_path_id :
-                print("atladımm")
                 path_id = min(path_id + 1 ,max_path_id)
                 path_id_selected = min(path_id + 1 ,max_path_id)
                 target_selected=[target_x_list[path_id_selected],target_y_list[path_id_selected]]
@@ -238,7 +228,7 @@ def main():
 
 
             dists       = np.linalg.norm(ob_xy - curr_pos, axis=1)
-            ob_danger   = ob_xy[dists <1]
+            ob_danger   = ob_xy[dists <= 1]
             ob_in_range = ob_xy[dists <= 6]
             
 
@@ -247,20 +237,31 @@ def main():
             target_yaw=np.arctan2(delta_y, delta_x)
             curr_yaw=state[2]
             raw_diff=target_yaw-curr_yaw
-                 # wrap into (-π, π]
+            # wrap into (-π, π]
             yaw_err   = (raw_diff + np.pi) % (2*np.pi) - np.pi
 
-            if orientation_phase is None and abs(yaw_err) > yaw_tol and ob_danger.size ==0:
-                orientation_phase = 'fwd'
+            if orientation_phase is None and abs(yaw_err) > yaw_tol and ob_danger.size == 0:
+                orientation_phase = 'rev'
                 phase_start_time  = time.time()
 
-            # 3) if we’re in a orientation_phase, override controls
             if orientation_phase is not None:
                 now = time.time()
-
-                # --- compute your raw commands ---
                 # — forward locked steer —
-                if orientation_phase == 'fwd':
+
+                if orientation_phase == 'rev':
+                    raw_v_cmd   = orient_back_speed
+                    raw_steer_cmd   = -np.sign(yaw_err) * steer_lock
+
+                    if now - phase_start_time > orient_reverse_t:
+                        # if still off by more than tol, do another 
+                        if abs(yaw_err) > yaw_tol:
+                            orientation_phase = 'fwd'
+                            phase_start_time  = now
+                        else:
+                            # orientation corrected!
+                            orientation_phase = None
+
+                elif orientation_phase == 'fwd':
                     raw_v_cmd   =  orient_speed
                     raw_steer_cmd   = np.sign(yaw_err) * steer_lock
                     # once time’s up, switch to reverse
@@ -268,22 +269,7 @@ def main():
                         orientation_phase = 'rev'
                         phase_start_time  = now
 
-                # — reverse locked steer —
-                elif orientation_phase == 'rev':
-                    print("aa")
-                    raw_v_cmd   = orient_back_speed
-                    raw_steer_cmd   = -np.sign(yaw_err) * steer_lock
-                    # when done, either finish or repeat
-                    if now - phase_start_time > orient_reverse_t:
-                        # if still off by more than tol, do another forward pass
-                        if abs(yaw_err) > yaw_tol:
-                            orientation_phase = 'fwd'
-                            phase_start_time  = now
-                        else:
-                            # heading is good → clear override
-                            orientation_phase = None
-
-              # --- now filter them ---
+              # low pass filtering data 
                 v_cmd     = alpha * raw_v_cmd     + (1 - alpha) * prev_v_cmd
                 steer_cmd = alpha * raw_steer_cmd + (1 - alpha) * prev_steer_cmd
         
@@ -291,28 +277,24 @@ def main():
                 velocity.ctrl = v_cmd
                 steering.ctrl = steer_cmd
          
-
-
             else:
-
-
-
                 u, _traj= dwa_control(state, dwa_config,target_selected , ob_in_range)
                 raw_v_cmd, raw_steer_cmd = u
-
-                
+       
                 raw_steer_cmd *= 2.5
+        
 
-                v_cmd     = alpha * raw_v_cmd     + (1 - alpha) * prev_v_cmd
-                steer_cmd = alpha * raw_steer_cmd + (1 - alpha) * prev_steer_cmd
-
+                # low pass filtering data  
+                # clipped steering cmd to avoid high peaks that make the car jump  
+                v_cmd     =alpha * raw_v_cmd    + (1 - alpha) * prev_v_cmd
+                steer_cmd = np.clip(alpha * raw_steer_cmd,-0.7,0.7) + (1 - alpha) * prev_steer_cmd
                 
-                # MuJoCo’s internal servo P‑controllers handle the low‑level tracking
+                # apply to the actuators
                 velocity.ctrl = v_cmd
                 steering.ctrl = np.clip(steer_cmd,-4,4)
 
 
-                # remember for next frame
+            # remember for next frame
             prev_v_cmd     = v_cmd
             prev_steer_cmd = steer_cmd
 
