@@ -162,7 +162,7 @@ def main():
 
       # tune parameters
       dwa_config = DWAConfig() 
-      dwa_config.max_speed = 1.7
+      dwa_config.max_speed = 2.5
       dwa_config.min_speed = -1
       dwa_config.max_yaw_rate = 360 * np.pi / 180
       dwa_config.max_accel = 8
@@ -170,7 +170,7 @@ def main():
       dwa_config.v_resolution = 0.1
       dwa_config.yaw_rate_resolution = 6 * np.pi / 90
       dwa_config.dt = 0.1
-      dwa_config.predict_time = .4
+      dwa_config.predict_time = .3
       dwa_config.to_goal_cost_gain = 3.0
       dwa_config.speed_cost_gain = 0.45
       dwa_config.obstacle_cost_gain = 2.0
@@ -300,7 +300,7 @@ def main():
             if np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .4:
                 if path_id < max_path_id:
                     path_id += 1
-                elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .3 and ob_danger.size == 0:
+                elif path_id == max_path_id and np.hypot(state[0] - target_selected[0], state[1] - target_selected[1]) < .5 and ob_danger.size == 0:
                     velocity.ctrl = 0
                 else:
                     pass
